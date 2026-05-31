@@ -1,30 +1,31 @@
-import { supabase } from './supabase';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+} from 'firebase/auth';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from './firebase';
 
 export async function register(email: string, password: string, displayName: string) {
-  const { data, error } = await supabase.auth.signUp({ email, password });
-  if (error) throw error;
-
-  const user = data.user;
-  if (!user) throw new Error('Registration failed.');
-
-  const { error: profileError } = await supabase.from('users').insert({
-    id: user.id,
-    display_name: displayName,
+  const { user } = await createUserWithEmailAndPassword(auth, email, password);
+  await updateProfile(user, { displayName });
+  await setDoc(doc(db, 'users', user.uid), {
+    uid: user.uid,
+    displayName,
     email,
-    circle_ids: [],
+    photoURL: null,
+    circleIds: [],
+    createdAt: serverTimestamp(),
   });
-  if (profileError) throw profileError;
-
   return user;
 }
 
 export async function login(email: string, password: string) {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) throw error;
-  return data.user;
+  const { user } = await signInWithEmailAndPassword(auth, email, password);
+  return user;
 }
 
 export async function logout() {
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+  await signOut(auth);
 }

@@ -9,7 +9,7 @@ A free, open-source family location sharing app — a self-hosted alternative to
 - **Cross-platform** — iOS and Android from a single codebase
 - **Battery-aware** — background location updates with adaptive polling
 - **Push notifications** — alerts when members arrive or leave places
-- **100% free** — runs on Supabase's free tier for typical family use
+- **100% free** — runs on Firebase's free tier for typical family use
 
 ## Tech Stack
 
@@ -19,10 +19,10 @@ A free, open-source family location sharing app — a self-hosted alternative to
 | Language | TypeScript |
 | Navigation | React Navigation v6 |
 | Map | react-native-maps |
-| Backend / Auth | Supabase (PostgreSQL + Auth) |
-| Real-time sync | Supabase real-time subscriptions |
+| Backend / Auth | Firebase (Firestore + Auth) |
+| Real-time sync | Firestore live listeners |
 | Background GPS | expo-location + expo-task-manager |
-| Push notifications | Expo Notifications |
+| Push notifications | Expo Notifications + FCM |
 | SMS invites | Expo SMS (native, no cost) |
 
 ## Project Structure
@@ -38,21 +38,26 @@ family-circle/
 │       │   ├── auth/       # Login, Register
 │       │   └── main/       # Map, Circle, Settings
 │       ├── components/     # MemberMarker, MemberCard
-│       ├── services/       # Supabase client, auth, circle, location
+│       ├── services/       # Firebase client, auth, circle, location
 │       ├── hooks/          # useAuth, useCircle, useLocation
 │       └── types/          # Shared TypeScript types
-├── supabase/
-│   └── schema.sql          # Database schema — run this in Supabase SQL editor
 └── README.md
 ```
 
-## Database Schema (Supabase / PostgreSQL)
+## Firebase Data Model
 
 ```
-users         — id, display_name, email, photo_url, circle_ids[]
-circles       — id, name, owner_id, invite_code, invite_expiry, member_ids[]
-circle_members — circle_id, user_id, display_name, joined_at
-locations     — user_id (PK), circle_id, latitude, longitude, speed, updated_at
+/users/{userId}
+  displayName, email, photoURL, circleIds[]
+
+/circles/{circleId}
+  name, ownerId, createdAt, inviteCode, inviteExpiry, memberIds[]
+
+/circles/{circleId}/members/{userId}
+  displayName, photoURL, joinedAt
+
+/locations/{userId}
+  latitude, longitude, speed, heading, batteryLevel, updatedAt, circleId
 ```
 
 ## Getting Started
@@ -61,7 +66,7 @@ locations     — user_id (PK), circle_id, latitude, longitude, speed, updated_a
 
 - [Node.js](https://nodejs.org/) 18+
 - [Expo Go](https://expo.dev/go) app on your phone (for development)
-- A [Supabase](https://supabase.com) account (free)
+- A [Firebase](https://console.firebase.google.com/) account (free)
 
 ### 1. Clone the repo
 
@@ -76,19 +81,24 @@ cd family-circle/mobile
 npm install
 ```
 
-### 3. Set up Supabase
+### 3. Configure Firebase
 
-1. Go to [supabase.com](https://supabase.com) and create a new project
-2. In the SQL Editor, open `supabase/schema.sql` from this repo and click **Run** — this creates all tables and security rules
-3. Go to **Project Settings → API** and copy your **Project URL** and **anon/public key**
-4. Open `mobile/src/services/supabase.ts` and paste them in:
+1. Go to [Firebase Console](https://console.firebase.google.com/) and create a project
+2. Go to **Authentication → Sign-in method** and enable **Email/Password**
+3. Go to **Firestore Database** and click **Create database** (start in test mode)
+4. Go to **Project Settings → Your apps → Add app** → choose Web (`</>`)
+5. Copy the config and paste it into `mobile/src/services/firebase.ts`:
 
 ```ts
-const SUPABASE_URL = 'https://your-project.supabase.co';
-const SUPABASE_ANON_KEY = 'your-anon-key';
+const firebaseConfig = {
+  apiKey: 'YOUR_API_KEY',
+  authDomain: 'YOUR_PROJECT.firebaseapp.com',
+  projectId: 'YOUR_PROJECT_ID',
+  storageBucket: 'YOUR_PROJECT.appspot.com',
+  messagingSenderId: 'YOUR_SENDER_ID',
+  appId: 'YOUR_APP_ID',
+};
 ```
-
-5. In Supabase, go to **Authentication → Providers** and make sure **Email** is enabled
 
 ### 4. Run the app
 
@@ -114,6 +124,34 @@ npx expo build:android
 2. Code is sent via your phone's native SMS app (no third-party cost)
 3. Recipient opens the app, enters the code → gets added to the circle
 4. Location sharing begins automatically in the background
+
+## Firestore Security Rules
+
+Once you're done testing, replace the default rules in **Firebase Console → Firestore → Rules**:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, write: if request.auth.uid == userId;
+    }
+    match /circles/{circleId} {
+      allow read: if request.auth.uid in resource.data.memberIds;
+      allow write: if request.auth.uid == resource.data.ownerId;
+      match /members/{memberId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth.uid == memberId
+                     || request.auth.uid == get(/databases/$(database)/documents/circles/$(circleId)).data.ownerId;
+      }
+    }
+    match /locations/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth.uid == userId;
+    }
+  }
+}
+```
 
 ## Contributing
 

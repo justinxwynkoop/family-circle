@@ -1,40 +1,27 @@
 import { useState, useEffect } from 'react';
-import { Session } from '@supabase/supabase-js';
-import { supabase } from '../services/supabase';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../services/firebase';
 import { User } from '../types';
 
 export function useAuth() {
-  const [session, setSession] = useState<Session | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      if (data.session) fetchProfile(data.session.user.id);
-      else setLoading(false);
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      setFirebaseUser(fbUser);
+      if (fbUser) {
+        const snap = await getDoc(doc(db, 'users', fbUser.uid));
+        setUser(snap.exists() ? (snap.data() as User) : null);
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
     });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      if (newSession) fetchProfile(newSession.user.id);
-      else { setUser(null); setLoading(false); }
-    });
-
-    return () => listener.subscription.unsubscribe();
+    return unsub;
   }, []);
 
-  async function fetchProfile(uid: string) {
-    const { data } = await supabase.from('users').select().eq('id', uid).single();
-    setUser(data ? {
-      uid: data.id,
-      displayName: data.display_name,
-      email: data.email,
-      photoURL: data.photo_url ?? undefined,
-      circleIds: data.circle_ids ?? [],
-    } : null);
-    setLoading(false);
-  }
-
-  return { session, user, loading };
+  return { firebaseUser, user, loading };
 }

@@ -1,9 +1,11 @@
 import * as ExpoLocation from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import { supabase } from './supabase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from './firebase';
 
 const BACKGROUND_LOCATION_TASK = 'background-location-task';
 
+// Registered at module level — must be outside any component or function
 TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }: any) => {
   if (error || !data) return;
   const { locations } = data as { locations: ExpoLocation.LocationObject[] };
@@ -14,16 +16,15 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }: any) =>
   const circleId = (global as any).__familyCircleId as string | undefined;
   if (!uid || !circleId) return;
 
-  await supabase.from('locations').upsert({
-    user_id: uid,
-    circle_id: circleId,
+  await setDoc(doc(db, 'locations', uid), {
     latitude: location.coords.latitude,
     longitude: location.coords.longitude,
     speed: location.coords.speed,
     heading: location.coords.heading,
-    battery_level: -1,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'user_id' });
+    batteryLevel: -1,
+    updatedAt: serverTimestamp(),
+    circleId,
+  });
 });
 
 export async function requestLocationPermissions(): Promise<boolean> {
