@@ -2,15 +2,13 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-// Replace these values with your Firebase project config.
-// Firebase Console → Project Settings → Your apps → SDK setup and configuration
 const firebaseConfig = {
-  apiKey: 'YOUR_API_KEY',
-  authDomain: 'YOUR_PROJECT.firebaseapp.com',
-  projectId: 'YOUR_PROJECT_ID',
-  storageBucket: 'YOUR_PROJECT.appspot.com',
-  messagingSenderId: 'YOUR_SENDER_ID',
-  appId: 'YOUR_APP_ID',
+  apiKey: 'AIzaSyA_wegtOn27BqwMQB1TUDjYXskL-JHqwCY',
+  authDomain: 'family-circle-tracking.firebaseapp.com',
+  projectId: 'family-circle-tracking',
+  storageBucket: 'family-circle-tracking.firebasestorage.app',
+  messagingSenderId: '482941074376',
+  appId: '1:482941074376:web:46ec846866e66f1b9a5efd',
 };
 
 const app = initializeApp(firebaseConfig);
