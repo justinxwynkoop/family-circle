@@ -1,11 +1,9 @@
 import * as ExpoLocation from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from './firebase';
+import { supabase } from './supabase';
 
 const BACKGROUND_LOCATION_TASK = 'background-location-task';
 
-// Registered at module level — must be outside any component or function
 TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }: any) => {
   if (error || !data) return;
   const { locations } = data as { locations: ExpoLocation.LocationObject[] };
@@ -16,15 +14,16 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }: any) =>
   const circleId = (global as any).__familyCircleId as string | undefined;
   if (!uid || !circleId) return;
 
-  await setDoc(doc(db, 'locations', uid), {
+  await supabase.from('locations').upsert({
+    user_id: uid,
+    circle_id: circleId,
     latitude: location.coords.latitude,
     longitude: location.coords.longitude,
     speed: location.coords.speed,
     heading: location.coords.heading,
-    batteryLevel: -1,
-    updatedAt: serverTimestamp(),
-    circleId,
-  });
+    battery_level: -1,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id' });
 });
 
 export async function requestLocationPermissions(): Promise<boolean> {
@@ -43,8 +42,8 @@ export async function startBackgroundTracking(uid: string, circleId: string) {
 
   await ExpoLocation.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
     accuracy: ExpoLocation.Accuracy.Balanced,
-    timeInterval: 30_000,     // update every 30 seconds
-    distanceInterval: 50,     // or every 50 meters
+    timeInterval: 30_000,
+    distanceInterval: 50,
     showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: 'FamilyCircle',
@@ -56,13 +55,9 @@ export async function startBackgroundTracking(uid: string, circleId: string) {
 
 export async function stopBackgroundTracking() {
   const isRunning = await ExpoLocation.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK).catch(() => false);
-  if (isRunning) {
-    await ExpoLocation.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-  }
+  if (isRunning) await ExpoLocation.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
 }
 
 export async function getCurrentLocation() {
-  return ExpoLocation.getCurrentPositionAsync({
-    accuracy: ExpoLocation.Accuracy.Balanced,
-  });
+  return ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy.Balanced });
 }

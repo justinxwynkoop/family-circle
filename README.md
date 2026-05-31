@@ -9,7 +9,7 @@ A free, open-source family location sharing app — a self-hosted alternative to
 - **Cross-platform** — iOS and Android from a single codebase
 - **Battery-aware** — background location updates with adaptive polling
 - **Push notifications** — alerts when members arrive or leave places
-- **100% free** — runs on Firebase's free tier for typical family use
+- **100% free** — runs on Supabase's free tier for typical family use
 
 ## Tech Stack
 
@@ -19,11 +19,11 @@ A free, open-source family location sharing app — a self-hosted alternative to
 | Language | TypeScript |
 | Navigation | React Navigation v6 |
 | Map | react-native-maps |
-| Backend / Auth | Firebase (Firestore + Auth) |
-| Real-time sync | Firestore live listeners |
+| Backend / Auth | Supabase (PostgreSQL + Auth) |
+| Real-time sync | Supabase real-time subscriptions |
 | Background GPS | expo-location + expo-task-manager |
-| Push notifications | Expo Notifications + FCM |
-| SMS invites | Expo SMS (native) |
+| Push notifications | Expo Notifications |
+| SMS invites | Expo SMS (native, no cost) |
 
 ## Project Structure
 
@@ -32,33 +32,27 @@ family-circle/
 ├── mobile/                 # React Native Expo app
 │   ├── App.tsx             # Root component & auth gate
 │   ├── app.json            # Expo config
-│   ├── src/
-│   │   ├── navigation/     # Stack & tab navigators
-│   │   ├── screens/
-│   │   │   ├── auth/       # Login, Register
-│   │   │   └── main/       # Map, Circle, Invite, Settings
-│   │   ├── components/     # MemberMarker, MemberCard
-│   │   ├── services/       # Firebase, auth, circle, location
-│   │   ├── hooks/          # useAuth, useCircle, useLocation
-│   │   └── types/          # Shared TypeScript types
-│   └── package.json
+│   └── src/
+│       ├── navigation/     # Stack & tab navigators
+│       ├── screens/
+│       │   ├── auth/       # Login, Register
+│       │   └── main/       # Map, Circle, Settings
+│       ├── components/     # MemberMarker, MemberCard
+│       ├── services/       # Supabase client, auth, circle, location
+│       ├── hooks/          # useAuth, useCircle, useLocation
+│       └── types/          # Shared TypeScript types
+├── supabase/
+│   └── schema.sql          # Database schema — run this in Supabase SQL editor
 └── README.md
 ```
 
-## Firebase Data Model
+## Database Schema (Supabase / PostgreSQL)
 
 ```
-/users/{userId}
-  displayName, email, photoURL, circleIds[]
-
-/circles/{circleId}
-  name, ownerId, createdAt, inviteCode, inviteExpiry
-
-/circles/{circleId}/members/{userId}
-  displayName, photoURL, joinedAt
-
-/locations/{userId}
-  latitude, longitude, speed, heading, batteryLevel, updatedAt, circleId
+users         — id, display_name, email, photo_url, circle_ids[]
+circles       — id, name, owner_id, invite_code, invite_expiry, member_ids[]
+circle_members — circle_id, user_id, display_name, joined_at
+locations     — user_id (PK), circle_id, latitude, longitude, speed, updated_at
 ```
 
 ## Getting Started
@@ -66,9 +60,8 @@ family-circle/
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) 18+
-- [Expo CLI](https://docs.expo.dev/get-started/installation/) — `npm install -g expo-cli`
 - [Expo Go](https://expo.dev/go) app on your phone (for development)
-- A [Firebase project](https://console.firebase.google.com/)
+- A [Supabase](https://supabase.com) account (free)
 
 ### 1. Clone the repo
 
@@ -83,24 +76,19 @@ cd family-circle/mobile
 npm install
 ```
 
-### 3. Configure Firebase
+### 3. Set up Supabase
 
-1. Go to [Firebase Console](https://console.firebase.google.com/) and create a project
-2. Enable **Authentication** → Email/Password
-3. Enable **Firestore Database** (start in test mode)
-4. Add an iOS and Android app to get your config values
-5. Copy `mobile/src/services/firebase.ts` and fill in your config:
+1. Go to [supabase.com](https://supabase.com) and create a new project
+2. In the SQL Editor, open `supabase/schema.sql` from this repo and click **Run** — this creates all tables and security rules
+3. Go to **Project Settings → API** and copy your **Project URL** and **anon/public key**
+4. Open `mobile/src/services/supabase.ts` and paste them in:
 
 ```ts
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
-};
+const SUPABASE_URL = 'https://your-project.supabase.co';
+const SUPABASE_ANON_KEY = 'your-anon-key';
 ```
+
+5. In Supabase, go to **Authentication → Providers** and make sure **Email** is enabled
 
 ### 4. Run the app
 
@@ -122,42 +110,14 @@ npx expo build:android
 
 ## Invite Flow
 
-1. Circle owner taps **Invite** → app generates a 6-digit code stored in Firestore with a 24-hour expiry
-2. Owner shares the code via the native SMS sheet (no third-party SMS cost)
+1. Circle owner taps **Circle** tab → **Send via SMS** — app generates a 6-digit code with a 24-hour expiry
+2. Code is sent via your phone's native SMS app (no third-party cost)
 3. Recipient opens the app, enters the code → gets added to the circle
-4. Location sharing begins automatically
-
-## Firestore Security Rules
-
-Add these rules in the Firebase Console under **Firestore → Rules**:
-
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read, write: if request.auth.uid == userId;
-    }
-    match /circles/{circleId} {
-      allow read: if request.auth.uid in resource.data.memberIds;
-      allow write: if request.auth.uid == resource.data.ownerId;
-      match /members/{memberId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth.uid == memberId
-                     || request.auth.uid == get(/databases/$(database)/documents/circles/$(circleId)).data.ownerId;
-      }
-    }
-    match /locations/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth.uid == userId;
-    }
-  }
-}
-```
+4. Location sharing begins automatically in the background
 
 ## Contributing
 
-Pull requests are welcome. For major changes, open an issue first to discuss what you'd like to change.
+Pull requests are welcome. For major changes, open an issue first.
 
 ## License
 

@@ -15,7 +15,7 @@ import { RootStackParamList } from './src/types';
 const Root = createNativeStackNavigator<RootStackParamList>();
 
 function AppContent() {
-  const { firebaseUser, loading } = useAuth();
+  const { session, loading } = useAuth();
 
   if (loading) {
     return (
@@ -27,7 +27,7 @@ function AppContent() {
 
   return (
     <Root.Navigator screenOptions={{ headerShown: false }}>
-      {firebaseUser ? (
+      {session ? (
         <Root.Screen name="App" component={AppNavigator} />
       ) : (
         <Root.Screen name="Auth" component={AuthNavigator} />
